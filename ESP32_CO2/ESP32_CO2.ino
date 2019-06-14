@@ -14,7 +14,7 @@
 #define DHT22_PIN 15
 
 #define EAP_IDENTITY "匿名IDとか呼ばれるもの" //if connecting from another corporation, use identity@organisation.domain in Eduroam
-#define SSID "Hazamaru AP"
+#define SSID "HUGAAAAA
 #define EAP_USERNAME "ユーザー名"
 #define EAP_PASSWORD "パスワード" //your Eduroam password
 #define HOST "接続確認のホスト名"//external server domain for HTTP connection after authentification Example"arduino.php5.sk"
