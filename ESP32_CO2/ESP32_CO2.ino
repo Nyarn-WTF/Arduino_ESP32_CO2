@@ -1,25 +1,25 @@
 #include <Arduino.h>
 #include <Ambient.h>
 #include <Wire.h>
+#include <SPI.h>
 #include <time.h>
 #include <WiFi.h>
-#include <Adafruit_SSD1306.h>
+#include <SSD1306Wire.h>
 #include <DHT.h>
 #include <SoftwareSerial.h>
 #include <esp_wpa2.h>
 
-#define SSD1306_I2C_ADDRESS   0x3C
+#define SSD1306_I2C_ADDRESS   0x3c
 #define JST     3600* 9
 #define DHTTYPE DHT22
 #define DHT22_PIN 15
 
-#define EAP_IDENTITY "匿名IDとか呼ばれるもの" //if connecting from another corporation, use identity@organisation.domain in Eduroam
-#define SSID "HUGAAAAA
-#define EAP_USERNAME "ユーザー名"
-#define EAP_PASSWORD "パスワード" //your Eduroam password
-#define HOST "接続確認のホスト名"//external server domain for HTTP connection after authentification Example"arduino.php5.sk"
-#define CID 334
-#define RIGHTKEY "aslsdfkj"
+#define EAP_IDENTITY "" //if connecting from another corporation, use identity@organisation.domain in Eduroam
+#define EAP_USERNAME "s16054"
+#define EAP_PASSWORD "S16054@tokyo.kosen" //your Eduroam password
+#define HOST "arduino.php5.sk"//external server domain for HTTP connection after authentification Example"arduino.php5.sk"
+#define CID 10898
+#define RIGHTKEY "0eeccfa6cd9bfdfb"
 
 struct Response {
   word header;
@@ -29,7 +29,7 @@ struct Response {
   byte tails[4];
 } __attribute__((packed));;
 
-const char* ssid = SSID;
+const char* ssid = "Hazamaru AP";
 int counter = 0;
 unsigned int channelId = CID;
 const char* writeKey = RIGHTKEY;
@@ -41,27 +41,28 @@ void Get_data(void *pvParameters);
 void Push_data(void *pvParameters);
 void Print_data(float Co2, float templa, float humid);
 
-Adafruit_SSD1306 display(-1);
 WiFiClient client;
 Ambient ambient;
 QueueHandle_t Sensor_data;
 DHT dht(DHT22_PIN, DHTTYPE);
 SoftwareSerial MHZ19Serial(33,25);
+SSD1306Wire display(0x3c, 21, 22);
 
 void setup(){
-    xTaskCreatePinnedToCore(Get_data, "Get_data", 4096, NULL, 4, NULL, 1);
-    xTaskCreatePinnedToCore(Push_data, "Push_data", 4096, NULL, 6, NULL, 1);
-    display.begin(SSD1306_SWITCHCAPVCC, SSD1306_I2C_ADDRESS);
-    ambient.begin(channelId, writeKey, &client);
+    pinMode(2,OUTPUT);
+    display.init();
     Con_wifi();
-    configTime( JST, 0, "ntp.nict.jp", "ntp.jst.mfeed.ad.jp");
+    Get_rtc();
     pinMode(DHT22_PIN, INPUT);
     MHZ19Serial.begin(9600);
+    ambient.begin(channelId, writeKey, &client);
+    xTaskCreatePinnedToCore(Get_data, "Get_data", 512, NULL, 1, NULL, 0);
+    xTaskCreatePinnedToCore(Push_data, "Push_data", 512, NULL, 1, NULL, 1);
+
 }
 
 void loop(){
-    Get_rtc();
-    delay(1000*60*30);
+
 }
 
 void Con_wifi(){
@@ -79,13 +80,27 @@ void Con_wifi(){
     esp_wifi_sta_wpa2_ent_enable(&config); //set config settings to enable function
     WiFi.begin(ssid); //connect to wifi
     delay(1000);
+    int sts=0;
     while (WiFi.status() != WL_CONNECTED) {
+        if(sts==0){
+            digitalWrite(2,HIGH);
+            sts=1;
+        }else {
+            digitalWrite(2,LOW);
+            sts=0;
+        }
+        display.clear();
+        display.drawString(0, 0, static_cast<String>(counter));
+        display.display();
         delay(500);
         counter++;
-        if(counter>=60){ //after 30 seconds timeout - reset board
+        if(counter>=120){ //after 30 seconds timeout - reset board
             ESP.restart();
         }
     }
+    display.clear();
+    display.drawString(0,0,WiFi.SSID());
+    display.display();
 }
 
 void Get_rtc(){
@@ -93,7 +108,7 @@ void Get_rtc(){
 }
 
 void Get_data(void *pvParameters){
-    const byte b[] = {0xff, 0x01, 0x86, 0x00, 0x00, 0x00, 0x00, 0x00, 0x79};
+    static const byte b[] = {0xff, 0x01, 0x86, 0x00, 0x00, 0x00, 0x00, 0x00, 0x79};
     float templa,humid,co2;
     float ppm;
     struct Response response;
@@ -112,12 +127,11 @@ void Get_data(void *pvParameters){
 
         xStatus = xQueueSend(Sensor_data, &SendValues, 0);
         if(xStatus != pdPASS){
-            display.clearDisplay();
-            display.setCursor(0,0);
-            display.println("QUEUE SEND ERROR");
+            display.clear();
+            display.drawString(0,0,"QUEUE SEND ERROR");
             display.display();
         }
-        delay(500);
+        delay(2000);
     }
 }
 
@@ -140,31 +154,28 @@ void Push_data(void *pvParameters){
             }
         }else{
             if(uxQueueMessagesWaiting(Sensor_data) != 0){
-                display.clearDisplay();
-                display.setCursor(0,0);
-                display.println("QUEUE RES ERROR");
+                display.clear();
+                display.drawString(0,0,"QUEUE RES ERROR");
                 display.display();
             }            
         }
-        delay(100);
+        delay(1000);
     }
 }
 
 void Print_data(float Co2, float templa, float humid){
     String temp;
-    display.clearDisplay();
-    display.setCursor(0, 10);
+    display.clear();
     temp = "CO2 :" + static_cast<String>(Co2) +"ppm";
-    display.println(temp);
+    display.drawString(0,20,temp);
     temp = "TMP :" + static_cast<String>(templa) +"C";
-    display.println(temp);
+    display.drawString(0,30,temp);
     temp = temp = "HMD :" + static_cast<String>(humid) +"%";
-    display.println(temp);
+    display.drawString(0,40,temp);
     temp = temp = "DCF :" + static_cast<String>(0.81*templa+0.01*humid*(0.99*templa-14.3)+46.3);
-    display.println(temp);
+    display.drawString(0,50,temp);
     if(Co2 > 2000){
-        display.setCursor(20, 0);
-        display.println("Ventilate now!");
+        display.drawString(20,10,"Ventilate now!");
     }
     display.display();
 }
